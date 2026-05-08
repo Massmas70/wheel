@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>عجلة الحظ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080d18;
+      --card: #101a2d;
+      --line: #1e2a45;
+      --text: #eef2fb;
+      --muted: #8b9dc0;
+      --accent: #e8b84a;
+      --ok: #22b07d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Tajawal", Tahoma, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 184, 74, 0.08), transparent),
+        linear-gradient(180deg, var(--bg), #0c1222);
+    }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 14px 12px 24px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; font-weight: 700; }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .wheel-box { display: flex; justify-content: center; align-items: center; margin: 16px 0; }
+    .wheel {
+      width: min(280px, 72vw);
+      height: min(280px, 72vw);
+      border-radius: 50%;
+      border: 6px solid var(--line);
+      background: conic-gradient(
+        #3f5f93 0deg 180deg,
+        #2e4f83 180deg 270deg,
+        #45689a 270deg 324deg,
+        #5378ac 324deg 352.8deg,
+        #5d86be 352.8deg 360deg
+      );
+      position: relative;
+      transition: transform 5.2s cubic-bezier(0.15, 0.8, 0.1, 1);
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.35);
+    }
+    .wheel::after {
+      content: "🎡";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(36px, 12vw, 44px);
+    }
+    .pointer {
+      width: 0;
+      height: 0;
+      border-left: 14px solid transparent;
+      border-right: 14px solid transparent;
+      border-top: 24px solid var(--accent);
+      margin: 0 auto 6px;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+    }
+    button {
+      width: 100%;
+      padding: 11px 14px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      font-family: inherit;
+      background: var(--ok);
+      color: #fff;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { margin-top: 10px; font-size: 14px; line-height: 1.5; }
+    .result {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      min-height: 2.5em;
+    }
+    .err { color: #ffb4b2; font-size: 14px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🎡 عجلة الحظ</h1>
+      <p class="muted">لفة واحدة كل 24 ساعة — شرط الشحن خلال 24 ساعة: <strong>50,000</strong>+</p>
+      <div class="row" id="statusLine">جاري التحقق...</div>
+      <div id="bootErr" class="err" style="display:none"></div>
+      <div class="wheel-box">
+        <div>
+          <div class="pointer"></div>
+          <div class="wheel" id="wheel"></div>
+        </div>
+      </div>
+      <button type="button" id="spinBtn" disabled>🎯 لف الآن</button>
+      <div id="result" class="result muted">—</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get("token") || "";
+      var apiBase = (params.get("api") || "").replace(/\/+$/, "");
+      var wheel = document.getElementById("wheel");
+      var spinBtn = document.getElementById("spinBtn");
+      var statusLine = document.getElementById("statusLine");
+      var result = document.getElementById("result");
+      var bootErr = document.getElementById("bootErr");
+      var spinning = false;
+      var currentRot = 0;
+
+      function esc(s) {
+        if (s === null || s === undefined) return "—";
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      function fmtRemain(nowIso, untilIso) {
+        if (!untilIso) return "متاحة الآن";
+        var now = Date.parse(nowIso || new Date().toISOString());
+        var until = Date.parse(untilIso);
+        var sec = Math.max(0, Math.floor((until - now) / 1000));
+        if (sec <= 0) return "متاحة الآن";
+        var d = Math.floor(sec / 86400);
+        sec %= 86400;
+        var h = Math.floor(sec / 3600);
+        sec %= 3600;
+        var m = Math.floor(sec / 60);
+        return d > 0 ? d + " يوم " + h + " ساعة " + m + " دقيقة" : h + " ساعة " + m + " دقيقة";
+      }
+
+      function rewardToAngle(label) {
+        var map = {
+          "Hard luck": 90,
+          "+10,000": 225,
+          "+25,000": 297,
+          "+50,000": 338,
+          "+100,000": 356,
+          "+1,000,000": 359
+        };
+        return map[label] != null ? map[label] : 90;
+      }
+
+      function showBoot(msg) {
+        bootErr.style.display = "block";
+        bootErr.textContent = msg;
+        statusLine.textContent = "—";
+        spinBtn.disabled = true;
+      }
+
+      if (!token || !apiBase) {
+        showBoot("الرابط ناقص: افتح العجلة من زر «العجلة» في البوت (يُمرَّر token وapi تلقائياً).");
+        return;
+      }
+
+      async function loadStatus() {
+        var url =
+          apiBase +
+          "/miniapp/api/wheel/status?token=" +
+          encodeURIComponent(token);
+        var res;
+        try {
+          res = await fetch(url);
+        } catch (e) {
+          statusLine.textContent = "تعذّر الاتصال بالسيرفر.";
+          spinBtn.disabled = true;
+          return;
+        }
+        var d = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok || !d.ok) {
+          statusLine.textContent = "تعذّر تحميل الحالة.";
+          spinBtn.disabled = true;
+          return;
+        }
+        var remain = fmtRemain(d.now_at, d.cooldown_until);
+        statusLine.innerHTML =
+          "📊 حجم الشحن 24h: <b>" +
+          esc(d.volume_24h) +
+          "</b> | المتبقي للشرط: <b>" +
+          esc(d.volume_need) +
+          "</b> | اللفة القادمة: <b>" +
+          esc(remain) +
+          "</b>";
+        spinBtn.disabled = !d.eligible || spinning;
+      }
+
+      async function doSpin() {
+        if (spinning) return;
+        spinning = true;
+        spinBtn.disabled = true;
+        result.textContent = "جاري اللف...";
+        var res;
+        try {
+          res = await fetch(apiBase + "/miniapp/api/wheel/spin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: token })
+          });
+        } catch (e) {
+          result.textContent = "❌ تعذّر الاتصال بالسيرفر.";
+          spinning = false;
+          await loadStatus();
+          return;
+        }
+        var d = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok || !d.ok) {
+          result.textContent = "❌ " + (d.detail || "غير مؤهل حالياً");
+          spinning = false;
+          await loadStatus();
+          return;
+        }
+        var target = rewardToAngle(d.reward_label);
+        currentRot += 360 * 8 + (360 - target);
+        wheel.style.transform = "rotate(" + currentRot + "deg)";
+        setTimeout(async function () {
+          result.innerHTML =
+            d.reward_wallet > 0
+              ? "🎉 ربحت <b>" + esc(d.reward_wallet) + "</b> — " + esc(d.reward_label)
+              : "💔 " + esc(d.reward_label);
+          spinning = false;
+          await loadStatus();
+        }, 5300);
+      }
+
+      spinBtn.addEventListener("click", doSpin);
+      loadStatus();
+    })();
+  </script>
+</body>
+</html>
