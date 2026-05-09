@@ -1,172 +1,223 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<!doctype html>
+<html lang="ar">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>عجلة الحظ</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spin Wheel</title>
+
   <style>
-    :root{--bg:#0b1220;--card:#101a2d;--line:#243657;--text:#eef2fb;--muted:#8fa2c7;--ok:#22b07d;--warn:#e8b84a}
-    body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}
-    .wrap{max-width:520px;margin:0 auto;padding:12px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-    h2{margin:0 0 8px;font-size:20px}
-    .muted{color:var(--muted);font-size:13px}
-    .wheel-box{display:flex;justify-content:center;align-items:center;margin:14px 0}
-    .wheel{
-      width:280px;height:280px;border-radius:50%;
-      border:6px solid var(--line);
-      background:conic-gradient(
-        #3f5f93 0deg 180deg,
-        #2e4f83 180deg 270deg,
-        #45689a 270deg 324deg,
-        #5378ac 324deg 352.8deg,
-        #5d86be 352.8deg 360deg
-      );
-      position:relative;transition:transform 5.2s cubic-bezier(.15,.8,.1,1);
-      box-shadow:0 10px 36px rgba(0,0,0,.35);
+    body{
+      margin:0;
+      height:100vh;
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      background-image: url("background.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+
+      color:#e6eef6;
+      position:relative;
     }
-    .wheel::after{
-      content:"🎡";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:44px;
+
+    body::after {
+      content: "ALSHAHEN ICHANCY";
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      opacity:0.4;
+      letter-spacing:1px;
     }
-    .pointer{
-      width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-top:24px solid var(--warn);
-      margin:0 auto 6px;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));
+
+    .wrap{
+      width:360px;
+      max-width:92%;
+      text-align:center;
+      padding:20px;
     }
-    button{
-      width:100%;padding:10px;border:none;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;
-      background:var(--ok);color:#fff
+
+    #wheelBox{
+      position:relative;
+      width:320px;
+      height:320px;
+      margin:0 auto;
     }
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .row{margin-top:8px;font-size:14px}
-    .result{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px}
+
+    #wheel{
+      width:100%;
+      height:100%;
+      border-radius:50%;
+      display:block;
+      transform-origin:50% 50%;
+    }
+
+    #pointer{
+      position:absolute;
+      top:-18px;
+      left:50%;
+      transform:translateX(-50%);
+      width:48px;
+      pointer-events:none;
+      z-index:5;
+    }
+
+    #spinBtn{
+      margin-top:16px;
+      padding:12px 18px;
+      background:#06b6d4;
+      border:none;
+      border-radius:10px;
+      color:#042;
+      font-weight:800;
+      cursor:pointer;
+      font-size:16px;
+    }
+
+    #msg{margin-top:12px;font-size:15px;color:#cbd5e1}
+    #countdown{margin-top:8px;color:#9fb6c6;font-size:13px}
+    .disabled{opacity:0.6;pointer-events:none}
   </style>
 </head>
+
 <body>
+
+  <!-- 🔊 صوت الدوران -->
+  <audio id="spinSound" src="spin.mp3" preload="auto"></audio>
+
   <div class="wrap">
-    <div class="card">
-      <h2>🎡 عجلة الحظ</h2>
-      <div class="muted">لفة واحدة كل 24 ساعة — شرط الشحن خلال 24 ساعة: 50,000+</div>
-      <div class="row" id="statusLine">جاري التحقق...</div>
-      <div class="wheel-box">
-        <div>
-          <div class="pointer"></div>
-          <div class="wheel" id="wheel"></div>
-        </div>
-      </div>
-      <button id="spinBtn" disabled>🎯 لف الآن</button>
-      <div id="result" class="result muted">—</div>
+    <div id="wheelBox">
+      <img id="wheel" src="wheel.png" alt="wheel">
+      <img id="pointer" src="pointer.png" alt="pointer">
     </div>
+
+    <button id="spinBtn">لديك تدويرة مجانية</button>
+    <div id="msg"></div>
+    <div id="countdown"></div>
   </div>
-  <script>
-    /** GitHub Pages: استبدل __MINIAPP_API_BASE__ برابط السيرفر العام (HTTPS) الذي يشغّل FastAPI، بدون / أخيرة — مثال: https://panel.example.com */
-    const API_BASE = "__MINIAPP_API_BASE__".replace(/\/+$/, "");
-    const qp = new URLSearchParams(location.search);
-    const embeddedTok = "__WHEEL_TOKEN__";
-    const token =
-      qp.get("token") ||
-      (embeddedTok !== "__WHEEL_TOKEN__" ? embeddedTok : "");
-    const wheel = document.getElementById("wheel");
-    const spinBtn = document.getElementById("spinBtn");
-    const statusLine = document.getElementById("statusLine");
-    const result = document.getElementById("result");
-    let spinning = false;
-    let currentRot = 0;
 
-    function apiPath(path) {
-      const p = path.startsWith("/") ? path : "/" + path;
-      return API_BASE ? API_BASE + p : p;
+<script>
+  const tg = window.Telegram?.WebApp || null;
+  const user = tg?.initDataUnsafe?.user || {};
+  const user_id = user.id || 'guest';
+  const STORAGE_KEY = 'ichancy_last_spin_' + user_id;
+
+  const HARD_LUCK_CENTER_ANGLE = 180;
+
+  const wheel = document.getElementById('wheel');
+  const spinBtn = document.getElementById('spinBtn');
+  const msg = document.getElementById('msg');
+  const countdown = document.getElementById('countdown');
+
+  const spinSound = document.getElementById('spinSound');
+
+  let spinning = false;
+  let lastFinalRotation = 0;
+
+  function canSpin() {
+    const last = localStorage.getItem(STORAGE_KEY);
+    if (!last) return true;
+    return (Date.now() - Number(last)) >= 24*3600*1000;
+  }
+
+  function setSpinTime() {
+    localStorage.setItem(STORAGE_KEY, String(Date.now()));
+    updateCountdown();
+  }
+
+  function updateCountdown() {
+    const last = Number(localStorage.getItem(STORAGE_KEY));
+    if (!last) {
+      countdown.textContent = '';
+      spinBtn.classList.remove('disabled');
+      return;
+    }
+    const remainMs = 24*3600*1000 - (Date.now() - last);
+    if (remainMs <= 0) {
+      countdown.textContent = '';
+      spinBtn.classList.remove('disabled');
+      return;
+    }
+    spinBtn.classList.add('disabled');
+    const s = Math.floor(remainMs/1000);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const sec = s%60;
+    countdown.textContent = `التدويرة التالية خلال ${h}س ${m}د ${sec}ث`;
+  }
+
+  function spinToHardLuck() {
+    if (spinning) return;
+    if (!canSpin()) {
+      msg.textContent = 'انتظر حتى انتهاء العدّاد';
+      return;
     }
 
-    function esc(s){
-      if(s===null || s===undefined) return "—";
-      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    }
+    spinning = true;
+    msg.textContent = 'جاري الدوران...';
 
-    function fmtRemain(nowIso, untilIso){
-      if(!untilIso) return "متاحة الآن";
-      const now = Date.parse(nowIso || new Date().toISOString());
-      const until = Date.parse(untilIso);
-      let sec = Math.max(0, Math.floor((until-now)/1000));
-      if(sec<=0) return "متاحة الآن";
-      const d = Math.floor(sec/86400); sec%=86400;
-      const h = Math.floor(sec/3600); sec%=3600;
-      const m = Math.floor(sec/60);
-      return d>0 ? `${d} يوم ${h} ساعة ${m} دقيقة` : `${h} ساعة ${m} دقيقة`;
-    }
+    const fullSpins = 4 + Math.floor(Math.random() * 3);
+    const targetOffset = (360 - HARD_LUCK_CENTER_ANGLE) % 360;
+    const finalRotation = fullSpins * 360 + targetOffset;
 
-    async function loadStatus(){
-      if (!token) return;
-      const res = await fetch(apiPath(`/miniapp/api/wheel/status?token=${encodeURIComponent(token)}`));
-      const d = await res.json().catch(()=>({}));
-      if(!res.ok || !d.ok){
-        statusLine.textContent = "تعذّر تحميل الحالة.";
-        spinBtn.disabled = true;
-        return;
+    lastFinalRotation = finalRotation;
+
+    /* 🎯 مدة الدوران الجديدة: 3 ثواني */
+    wheel.style.transition = 'transform 3s cubic-bezier(.12,.25,.15,1)';
+
+    /* 🔊 تشغيل صوت الدوران */
+    spinSound.currentTime = 0;
+    spinSound.play();
+    spinSound.loop = true;
+
+    requestAnimationFrame(() => {
+      wheel.style.transform = `rotate(${finalRotation}deg)`;
+    });
+
+    wheel.addEventListener('transitionend', onStop, { once: true });
+
+    /* ⏱️ مهلة أمان */
+    setTimeout(() => { if (spinning) onStop(); }, 3500);
+  }
+
+  function onStop() {
+    spinning = false;
+
+    /* 🔇 إيقاف صوت الدوران */
+    spinSound.pause();
+    spinSound.currentTime = 0;
+
+    wheel.style.transition = 'none';
+    wheel.style.transform = `rotate(${lastFinalRotation}deg)`;
+
+    msg.textContent = 'حظ أوفر، حاول غداً';
+    setSpinTime();
+
+    try {
+      if (tg && typeof tg.sendData === 'function') {
+        tg.sendData(JSON.stringify({ prize: 'HARD_LUCK', user_id }));
       }
-      const remain = fmtRemain(d.now_at, d.cooldown_until);
-      statusLine.innerHTML = `📊 حجم الشحن 24h: <b>${esc(d.volume_24h)}</b> | المتبقي للشرط: <b>${esc(d.volume_need)}</b> | اللفة القادمة: <b>${esc(remain)}</b>`;
-      spinBtn.disabled = !d.eligible || spinning;
-    }
+    } catch (e) {}
 
-    function rewardToAngle(label){
-      const map = {
-        "Hard luck": 90,
-        "+10,000": 225,
-        "+25,000": 297,
-        "+50,000": 338,
-        "+100,000": 356,
-        "+1,000,000": 359
-      };
-      return map[label] ?? 90;
-    }
+    updateCountdown();
+  }
 
-    async function doSpin(){
-      if(spinning) return;
-      spinning = true;
-      spinBtn.disabled = true;
-      result.textContent = "جاري اللف...";
-      const res = await fetch(apiPath("/miniapp/api/wheel/spin"),{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({token})
-      });
-      const d = await res.json().catch(()=>({}));
-      if(!res.ok || !d.ok){
-        result.textContent = `❌ ${d.detail || "غير مؤهل حالياً"}`;
-        spinning = false;
-        await loadStatus();
-        return;
-      }
-      const target = rewardToAngle(d.reward_label);
-      currentRot += (360 * 8) + (360 - target);
-      wheel.style.transform = `rotate(${currentRot}deg)`;
-      setTimeout(async ()=>{
-        result.innerHTML = d.reward_wallet > 0
-          ? `🎉 ربحت <b>${esc(d.reward_wallet)}</b> — ${esc(d.reward_label)}`
-          : `💔 ${esc(d.reward_label)}`;
-        spinning = false;
-        await loadStatus();
-      }, 5300);
+  spinBtn.addEventListener('click', () => {
+    if (!canSpin()) {
+      msg.textContent = 'الرجاء الانتظار حتى انتهاء العدّاد';
+      return;
     }
+    spinToHardLuck();
+  });
 
-    spinBtn.addEventListener("click", doSpin);
-    if (!token) {
-      statusLine.textContent =
-        "رابط غير صالح. افتح عجلة الحظ من زر البوت داخل تليجرام.";
-      spinBtn.disabled = true;
-      result.textContent =
-        API_BASE === "__MINIAPP_API_BASE__"
-          ? "للاستضافة على GitHub Pages: عيّن عنوان API في الملف (المربع __MINIAPP_API_BASE__) ثم أعد الرفع."
-          : "—";
-    } else if (API_BASE === "__MINIAPP_API_BASE__") {
-      statusLine.textContent =
-        "عرّف عنوان السيرفر في الصفحة (__MINIAPP_API_BASE__) أو افتح العجلة من السيرفر مباشرة.";
-      spinBtn.disabled = true;
-      result.textContent = "—";
-    } else {
-      loadStatus();
-    }
-  </script>
+  setInterval(updateCountdown, 1000);
+  updateCountdown();
+</script>
+
 </body>
 </html>
